@@ -1,0 +1,82 @@
+# my global config
+global:
+  scrape_interval:     60s # Set the scrape interval to every 15 seconds. Default is every 1 minute.
+  evaluation_interval: 60s # Evaluate rules every 15 seconds. The default is every 1 minute.
+  external_labels:
+    node: node1
+    cluster: my-prometheus
+
+# A scrape configuration containing exactly one endpoint to scrape:
+# Here it's Prometheus itself.
+scrape_configs:
+  # The job name is added as a label `job=<job_name>` to any timeseries scraped from this config.
+  - job_name: prometheus
+    honor_labels: true
+    static_configs:
+      - targets: [ 'localhost:9090' ]
+        labels:
+          instance: prometheus
+
+
+  - job_name: 'thanos-sidecar'
+    scrape_interval: 60s
+    static_configs:
+      - targets: ['thanos-sidecar1:19191']
+        labels:
+          instance: thanos-sidecar.01
+      - targets:
+          - 'thanos-sidecar2:19191'
+        labels:
+          instance: thanos-sidecar.02
+
+  - job_name: 'thanos-store'
+    scrape_interval: 60s
+    static_configs:
+      - targets:
+          - 'thanos-store:19191'
+        labels:
+          instance: thanos-store
+
+  - job_name: 'thanos-query'
+    scrape_interval: 60s
+    static_configs:
+      - targets:
+          - 'thanos-querier:19192'
+        labels:
+          instance: thanos-querier
+      - targets:
+          - 'thanos-querier_frontend:19193'
+        labels:
+          instance: thanos-querier-frontend
+
+  - job_name: 'thanos-receive'
+    scrape_interval: 60s
+    static_configs:
+      - targets:
+          - 'thanos-receive:10907'
+        labels:
+          instance: thanos-receive
+
+  - job_name: 'thanos-rule'
+    scrape_interval: 60s
+    static_configs:
+      - targets:
+          - 'thanos-rule:10902'
+        labels:
+          instance: thanos-rule
+
+  - job_name: 'thanos-compact'
+    scrape_interval: 180s
+    static_configs:
+      - targets:
+          - 'thanos-compactor:10902'
+        labels:
+          instance: thanos-compactor
+
+
+
+  - job_name: 'minio'
+    scrape_interval: 60s
+    static_configs:
+      - targets: ['minio:9000']
+    metrics_path: /minio/prometheus/metrics

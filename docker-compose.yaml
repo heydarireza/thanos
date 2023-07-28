@@ -4,17 +4,40 @@ services:
     image: minio/minio
     container_name: minio
     ports:
-      - "19000:9000"
-      - "19001:9001"
+      - "${MINIO_DATAPORT}:9000"
+      - "${MINIO_ACCESSPORT}:9001"
     environment:
-      - MINIO_ACCESS_KEY=minio
-      - MINIO_SECRET_KEY=miniostorage
+      - MINIO_ACCESS_KEY=admin
+      - MINIO_SECRET_KEY=bucketsecret
       - MINIO_PROMETHEUS_AUTH_TYPE=public
     volumes:
-      - ./miniodata/data:/data
+      - ./storage/miniodata/data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
     command: server --console-address ':9001' /data
     networks:
       - net-thanos
+    restart: unless-stopped
+
+
+  createbuckets:
+    image: minio/mc
+    networks:
+      - net-thanos
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      /usr/bin/mc alias set myminio http://minio:9000 admin bucketsecret;
+      /usr/bin/mc mb myminio/prometheusthanos;
+      /usr/bin/mc policy set public myminio/prometheusthanos;
+      exit 0;
+      "
+
+
 
 
   prometheus-node1:
@@ -22,39 +45,43 @@ services:
     container_name: prometheus-node1
     volumes:
       - ./prometheus/node1/prometheus.yml:/etc/prometheus/prometheus.yml
-      - ./prometheus/node1/data:/prometheus
+      - ./storage/prometheus/node1/data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
       - '--storage.tsdb.min-block-duration=1m'
       - '--storage.tsdb.max-block-duration=1m'
       - '--storage.tsdb.retention.time=5m'
-    # ports:
-    #   - "9090:9090"
+    ports:
+      - "${PROMETHEUS_NODE1_EXPOSE}:9090"
     networks:
       - net-thanos
     depends_on:
       - minio
+    restart: unless-stopped
   thanos-sidecar1:
     image: thanosio/thanos:v0.31.0
     container_name: thanos-sidecar1
     volumes:
-      - ./prometheus/node1/data:/var/prometheus
+      - ./storage/prometheus/node1/data:/var/prometheus
       - ./thanos/bucket_config.yaml:/bucket_config.yaml
     command:
       - sidecar
       - --tsdb.path=/var/prometheus
       - --prometheus.url=http://prometheus-node1:9090
       - --objstore.config-file=/bucket_config.yaml
-      - --http-address=0.0.0.0:19191
-      - --grpc-address=0.0.0.0:19090
-    # ports:
-    #   - "19191:19191"
-    #   - "19090:19090"
+      - --http-address=0.0.0.0:${THANOS_SIDECAR1_HTTP}
+      - --grpc-address=0.0.0.0:${THANOS_SIDECAR1_GRPC}
+    ports:
+      - "${THANOS_SIDECAR1_HTTP_EXPOSE}:${THANOS_SIDECAR1_HTTP}"
+      - "${THANOS_SIDECAR1_GRPC_EXPOSE}:${THANOS_SIDECAR1_GRPC}"
     networks:
       - net-thanos
     depends_on:
       - prometheus-node1
+    restart: unless-stopped
+
+
 
 
   prometheus-node2:
@@ -62,39 +89,44 @@ services:
     container_name: prometheus-node2
     volumes:
       - ./prometheus/node2/prometheus.yml:/etc/prometheus/prometheus.yml
-      - ./prometheus/node2/data:/prometheus
+      - ./storage/prometheus/node2/data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
       - '--storage.tsdb.min-block-duration=1m'
       - '--storage.tsdb.max-block-duration=1m'
       - '--storage.tsdb.retention.time=5m'
-    # ports:
-    #   - "9091:9090"
+    ports:
+      - "${PROMETHEUS_NODE2_EXPOSE}:9090"
     networks:
       - net-thanos
     depends_on:
       - minio
+    restart: unless-stopped
   thanos-sidecar2:
     image: thanosio/thanos:v0.31.0
     container_name: thanos-sidecar2
     volumes:
-      - ./prometheus/node2/data:/var/prometheus
+      - ./storage/prometheus/node2/data:/var/prometheus
       - ./thanos/bucket_config.yaml:/bucket_config.yaml
     command:
       - sidecar
       - --tsdb.path=/var/prometheus
       - --prometheus.url=http://prometheus-node2:9090
       - --objstore.config-file=/bucket_config.yaml
-      - --http-address=0.0.0.0:19191
-      - --grpc-address=0.0.0.0:19090
-    # ports:
-    #   - "29191:19191"
-    #   - "29090:19090"
+      - --http-address=0.0.0.0:${THANOS_SIDECAR2_HTTP}
+      - --grpc-address=0.0.0.0:${THANOS_SIDECAR2_GRPC}
+    ports:
+      - "${THANOS_SIDECAR2_HTTP_EXPOSE}:${THANOS_SIDECAR2_HTTP}"
+      - "${THANOS_SIDECAR2_GRPC_EXPOSE}:${THANOS_SIDECAR2_GRPC}"
     networks:
       - net-thanos
     depends_on:
       - prometheus-node2
+    restart: unless-stopped
+
+
+
 
   thanos-store:
     image: thanosio/thanos:v0.31.0
@@ -105,15 +137,19 @@ services:
       - store
       - --data-dir=/var/thanos/store
       - --objstore.config-file=bucket_config.yaml
-      - --http-address=0.0.0.0:19191
-      - --grpc-address=0.0.0.0:19090
-    # ports:
-    #   - "39191:19191"
-    #   - "39090:19090"
+      - --http-address=0.0.0.0:${THANOS_STORE_HTTP}
+      - --grpc-address=0.0.0.0:${THANOS_STORE_GRPC}
+    ports:
+      - "${THANOS_STORE_HTTP_EXPOSE}:${THANOS_STORE_HTTP}"
+      - "${THANOS_STORE_GRPC_EXPOSE}:${THANOS_STORE_GRPC}"
     networks:
       - net-thanos
     depends_on:
       - minio
+    restart: unless-stopped
+
+
+
 
 
   thanos-querier:
@@ -121,19 +157,23 @@ services:
     container_name: thanos-querier
     command:
       - query
-      - --http-address=0.0.0.0:19192
-      - --store=thanos-sidecar1:19090
-      - --store=thanos-sidecar2:19090
-      - --store=thanos-store:19090
-      - --store=thanos-receive:10909
+      - --http-address=0.0.0.0:${THANOS_QUERY_HTTP}
+      - --store=thanos-sidecar1:${THANOS_SIDECAR1_GRPC}
+      - --store=thanos-sidecar2:${THANOS_SIDECAR2_GRPC}
+      - --store=thanos-store:${THANOS_STORE_GRPC}
+      - --store=thanos-receive:${THANOS_RECEIVE_GRPC}
       - --store=thanos-rule:10901
       - --query.replica-label=node
     ports:
-      - "19192:19192"
+      - "${THANOS_QUERY_HTTP_EXPOSE}:${THANOS_QUERY_HTTP}"
     networks:
       - net-thanos
     depends_on:
       - minio
+      - thanos-receive
+      - thanos-store
+    restart: unless-stopped
+
 
 
 
@@ -142,8 +182,8 @@ services:
     container_name: thanos-querier_frontend
     command:
       - query-frontend
-      - --http-address=0.0.0.0:19193
-      - --query-frontend.downstream-url=http://thanos-querier:19192
+      - --http-address=0.0.0.0:${THANOS_QUERY_FRONTEND_HTTP}
+      - --query-frontend.downstream-url=http://thanos-querier:${THANOS_QUERY_HTTP}
       - --query-frontend.compress-responses
       - --query-range.partial-response
       - --query-range.split-interval=24h
@@ -151,12 +191,13 @@ services:
       - --query-frontend.log-queries-longer-than=5s
       - --cache-compression-type=snappy
     ports:
-      - "19193:19193"
+      - "${THANOS_QUERY_FRONTEND_HTTP_EXPOSE}:${THANOS_QUERY_FRONTEND_HTTP}"
     networks:
       - net-thanos
     depends_on:
       - minio
       - thanos-querier
+    restart: unless-stopped
 
 
   thanos-receive:
@@ -165,25 +206,26 @@ services:
     command:
       - receive
       - --tsdb.path=/data/remote-write-receive-data
-      - --http-address=0.0.0.0:10907
-      - --grpc-address=0.0.0.0:10909
+      - --http-address=0.0.0.0:${THANOS_RECEIVE_HTTP}
+      - --grpc-address=0.0.0.0:${THANOS_RECEIVE_GRPC}
       - --receive.replication-factor=1
-      - --remote-write.address=0.0.0.0:10908
+      - --remote-write.address=0.0.0.0:${THANOS_RECEIVE_REMOTE}
       - --objstore.config-file=/bucket_config.yaml
       - --grpc-grace-period=1s
       - --http-grace-period=1s
       - --label=receive="true"
     volumes:
-      - thanos_receive:/data
+      - ./storage/thanos_receive:/data
       - ./thanos/bucket_config.yaml:/bucket_config.yaml
     networks:
       - net-thanos
     depends_on:
       - minio
     ports:
-      - "10908:10908"
-      - "10909:10909"
-
+      - "${THANOS_RECEIVE_REMOTE_EXPOSE}:${THANOS_RECEIVE_REMOTE}"
+      - "${THANOS_RECEIVE_GRPC_EXPOSE}:${THANOS_RECEIVE_GRPC}"
+      - "${THANOS_RECEIVE_HTTP_EXPOSE}:${THANOS_RECEIVE_HTTP}"
+    restart: unless-stopped
 
 
   thanos-compactor:
@@ -197,14 +239,13 @@ services:
       - --retention.resolution-raw=90d
       - --retention.resolution-5m=120d
       - --retention.resolution-1h=1y
-      # - --block-sync-concurrency=20
       - --compact.concurrency=6
       - --downsample.concurrency=6
       - --delete-delay=15m
       - --wait
-      # - --wait-interval=3
+      - --wait-interval=5m
     volumes:
-      - thanos_compact:/data
+      - ./storage/thanos_compact:/data
       - ./thanos/bucket_config.yaml:/bucket_config.yaml
     networks:
       - net-thanos
@@ -213,10 +254,7 @@ services:
       - thanos-store
     ports:
       - "10902:10902"
-
-
-
-
+    restart: unless-stopped
 
 
   thanos-rule:
@@ -228,16 +266,16 @@ services:
       - --log.format=logfmt
       - --log.level=debug
       - --rule-file=/etc/config/rules.yml
-      - --query=http://thanos-querier:19192
-      - --alert.query-url=http://172.20.215.246:19193
+      - --query=http://thanos-querier:${THANOS_QUERY_HTTP}
+      - --alert.query-url=${ALERTQUERY}
       - --objstore.config-file=/bucket_config.yaml
-      - "--alertmanagers.url=http://alertmanager:9093"
+      - "--alertmanagers.url=${ALERTMANAGER_URL}"
     volumes:
-      - thanos_rule:/data
+      - ./storage/thanos_rule:/data
       - ./thanos/rules:/etc/config/
       - ./thanos/bucket_config.yaml:/bucket_config.yaml
-    # ports:
-    #   - "10932:10902"
+    ports:
+      - "${THANOS_RULES_EXPOSE}:10902"
     networks:
       - net-thanos
     depends_on:
@@ -247,7 +285,7 @@ services:
     expose:
       - 10902
       - 10901
-
+    restart: unless-stopped
 
   alertmanager:
     image: prom/alertmanager:v0.21.0
@@ -255,14 +293,14 @@ services:
     user: root
     volumes:
       - ./prometheus/alert:/etc/config/
-      - alertmanager:/data
+      - ./storage/alertmanager:/data
     command:
       - '--config.file=/etc/config/alertmanager.yml'
     restart: unless-stopped
     expose:
       - 9093
     ports:
-      - "9093:9093"
+      - "${ALERTMANAGER_EXPOSE}:9093"
     networks:
       - net-thanos
     depends_on:
@@ -271,24 +309,47 @@ services:
       - thanos-receive
 
 
+
+
   node-exporter:
-    image: prom/node-exporter 
     container_name: node-exporter
+    image: prom/node-exporter:latest
+    restart: unless-stopped
+    expose:
+      - "9100"
+    networks:
+      - net-thanos
     volumes:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
       - /:/rootfs:ro
+      - /:/host:ro,rslave
     command:
+      - '--path.rootfs=/host'
       - '--path.procfs=/host/proc'
-      - '--path.rootfs=/rootfs'
       - '--path.sysfs=/host/sys'
-      - '--collector.filesystem.ignored-mount-points=^/(sys|proc|dev|host|etc)($$|/)'
+      - --collector.filesystem.ignored-mount-points
+      - "^/(sys|proc|dev|host|etc|rootfs/var/lib/docker/containers|rootfs/var/lib/docker/overlay2|rootfs/run/docker/netns|rootfs/var/lib/docker/aufs)($$|/)"
+    labels:
+      - "app.name=node-exporter"
+      - "app.part-of=monitoring"
+
+  cadvisor:
+    container_name: cadvisor
+    image: gcr.io/cadvisor/cadvisor
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:rw
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    ports:
+      - 8080:8080
+    restart: unless-stopped
+    labels:
+      - "app.name=cadvisor"
+      - "app.part-of=monitoring"
     networks:
       - net-thanos
-    depends_on:
-      - minio
-    # ports:
-    #   - "9100:9100"
 
 
   remote-write:
@@ -296,7 +357,7 @@ services:
     container_name: remote-write
     volumes:
       - ./prometheus/remote-write/prometheus.yml:/etc/prometheus/prometheus.yml
-      - ./prometheus/remote-write/data:/prometheus
+      - ./storage/prometheus/remote-write/data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
@@ -310,34 +371,30 @@ services:
     depends_on:
       - minio
       - thanos-receive
+    restart: unless-stopped
+
 
 
 
   grafana:
-    image: grafana/grafana
+    container_name: grafana
+    image: grafana/grafana:latest
+    user: "472"
     depends_on:
-      - minio
-    volumes:
-      - grafana-storage:/var/lib/grafana
-    restart: unless-stopped
-    environment:
-      GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: admin
+      - thanos-querier
     ports:
-      - "3000:3000"
+      - 3000:3000
+    volumes:
+      - ./storage/grafana-storage:/var/lib/grafana
+      - ./grafana/provisioning/:/etc/grafana/provisioning/
+    restart: unless-stopped
+    labels:
+      - "app.name=grafana"
+      - "app.part-of=monitoring"
+    env_file:
+      - ./grafana/config.monitoring
     networks:
       - net-thanos
-
-
-
-
-
-
-
-
-
-
-
 
 
 networks:
