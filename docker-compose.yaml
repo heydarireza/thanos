@@ -1,4 +1,4 @@
-version: '3.7'
+version: !!str 3.7
 services:
   minio:
     image: minio/minio
@@ -401,9 +401,9 @@ networks:
   net-thanos:
     driver: bridge
 
-volumes:
-  thanos_receive: {}
-  thanos_compact: {}
-  grafana-storage: {}
-  thanos_rule: {}
-  alertmanager: {}
+# volumes:
+#   thanos_receive: {}
+#   thanos_compact: {}
+#   grafana-storage: {}
+#   thanos_rule: {}
+#   alertmanager: {}
