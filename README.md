@@ -78,6 +78,7 @@ Prometheus rules are a crucial aspect of the Prometheus monitoring system. They 
 **Important:**
 
 You have to  update configuration file in [alertmanger config](prometheus/alert/alertmanager.yml)
+
 ---
 
 *   grafana
