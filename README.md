@@ -1,7 +1,7 @@
 # Docker Compose for Thanos Stack
  [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-This readme file provides instructions on how to create a Docker Compose stack for Thanos, a highly available Prometheus setup that enables long-term storage and global querying capabilities.
+This readme file provides instructions on how to create a Docker Compose for Thanos stack, a highly available Prometheus setup that enables long-term storage and global querying capabilities.
 
 ## Prerequisites
 
